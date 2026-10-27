@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+backend/ausencias.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Node
+node_modules/
+dist/
+
+# Editor / sistema
+.vscode/
+.DS_Store
+.env
