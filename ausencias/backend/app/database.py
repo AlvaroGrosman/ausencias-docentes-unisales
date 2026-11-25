@@ -15,7 +15,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-DEFAULT_URL = "postgresql+psycopg://ausencias:ausencias@localhost:5432/ausencias"
+DEFAULT_URL = "postgresql+psycopg://ausencias:ausencias@localhost:5433/ausencias"
 DB_URL = os.getenv("DATABASE_URL", DEFAULT_URL)
 
 # pool_pre_ping: testa a conexão antes de usá-la (evita erro se o PostgreSQL reiniciar).

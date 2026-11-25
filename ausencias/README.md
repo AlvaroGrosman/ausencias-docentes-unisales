@@ -9,7 +9,7 @@ Escolha **uma** das opções:
 ```bash
 docker compose up -d
 ```
-Isso sobe um PostgreSQL 16 com usuário `ausencias`, senha `ausencias` e banco `ausencias`.
+Isso sobe um PostgreSQL 16 com usuário `ausencias`, senha `ausencias` e banco `ausencias`, acessível na porta **5433** do computador (a 5433 evita conflito com um PostgreSQL já instalado no Windows, que usa a 5432).
 
 **B) PostgreSQL instalado no computador** (instalador oficial: https://www.postgresql.org/download/): no `psql` ou no pgAdmin, como usuário `postgres`, rode
 ```sql
@@ -17,7 +17,7 @@ CREATE USER ausencias WITH PASSWORD 'ausencias' CREATEDB;
 CREATE DATABASE ausencias OWNER ausencias;
 ```
 
-Em seguida, copie `backend/.env.example` para `backend/.env`. Se usar outro usuário, senha ou porta, ajuste o `DATABASE_URL` nesse arquivo.
+Em seguida, copie `backend/.env.example` para `backend/.env`. O arquivo de exemplo usa a porta 5433 (Docker). Na opção B, troque `5433` por `5432` (porta padrão do PostgreSQL instalado) nas duas linhas do `.env`. Se usar outro usuário ou senha, ajuste também.
 
 ## Backend (terminal 1)
 ```bash

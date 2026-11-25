@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
-TEST_URL = os.getenv("TEST_DATABASE_URL", "postgresql+psycopg://ausencias:ausencias@localhost:5432/ausencias_test")
+TEST_URL = os.getenv("TEST_DATABASE_URL", "postgresql+psycopg://ausencias:ausencias@localhost:5433/ausencias_test")
 
 
 def ensure_database(url: str):
