@@ -1,0 +1,26 @@
+# Ambientes virtuais Python (em qualquer pasta)
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+
+# Configuração local (senhas e URL do banco) — use backend/.env.example como modelo
+.env
+
+# Bancos locais antigos (SQLite) e arquivos enviados pelos usuários
+*.db
+ausencias/backend/uploads/*
+!ausencias/backend/uploads/.gitkeep
+
+# Node
+node_modules/
+dist/
+
+# Editor / sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

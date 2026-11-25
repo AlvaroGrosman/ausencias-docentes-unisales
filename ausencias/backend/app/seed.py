@@ -2,9 +2,11 @@
 Popula o banco com dados de demonstração (ATENÇÃO: apaga e recria todas as tabelas).
 Uso (dentro de backend/):  python -m app.seed
 Os históricos são gerados executando a própria máquina de estados (workflow.apply_action),
-então eventos, notificações e assinaturas ficam coerentes com as regras reais.
+então eventos, notificações e aprovações ficam coerentes com as regras reais.
 """
 from datetime import date, timedelta
+
+from sqlalchemy import text
 
 from .constants import Role, Status as S
 from .database import Base, SessionLocal, engine
@@ -31,7 +33,6 @@ COURSES = {"SI": "Sistemas de Informação", "ADM": "Administração"}
 
 # (docente, tipo, início em dias relativos a hoje, duração, disciplinas, motivo, dias atrás da criação, passos)
 # passo = (ator, ação, observação, substituto, horas após o passo anterior) ; ação "edit" altera o motivo
-SUBMIT = ("{t}", "submit", None, None, 1)
 SCENARIOS = [
     ("t1", "PROGRAMADA", 12, 1, "Banco de Dados II — turma 7SI", "Apresentação de artigo em congresso nacional.", 1, []),
     ("t3", "NAO_PROGRAMADA", 0, 1, "Gestão de Pessoas — turma 3ADM", "Consulta médica de urgência.", 0, []),
@@ -67,6 +68,8 @@ SCENARIOS = [
 
 
 def run():
+    with engine.begin() as conn:   # remove a tabela da antiga assinatura simulada, se existir num banco antigo
+        conn.execute(text("DROP TABLE IF EXISTS signatures CASCADE"))
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     db = SessionLocal()
@@ -89,7 +92,7 @@ def run():
                              status=S.RASCUNHO, created_at=at, updated_at=at)
         db.add(req)
         db.flush()
-        log_event(db, req, t, "create", None, S.RASCUNHO, None, at)
+        log_event(db, req, t, "create", None, S.RASCUNHO, None, at, "10.0.0.%d" % (10 + list(users).index(teacher)))
         for actor, action, note, sub, hours in steps:
             at += timedelta(hours=hours)
             if at > now():

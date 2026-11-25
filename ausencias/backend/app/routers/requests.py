@@ -14,9 +14,8 @@ from ..schemas import ActionIn, RequestIn
 from ..security import client_ip, get_current_user
 from ..services.audit_service import log_access, log_event
 from ..services.pdf_service import build_request_pdf
-from ..services.signature_service import is_valid
 from ..utils import now
-from ..workflow import EVENT_LABELS, allowed_actions, apply_action
+from ..workflow import EVENT_LABELS, allowed_actions, apply_action, approvals
 
 router = APIRouter(prefix="/api", tags=["Solicitações"])
 UPLOADS = BASE_DIR / "uploads"
@@ -84,9 +83,8 @@ def serialize(req: AbsenceRequest, u: User, detail=False) -> dict:
         d["events"] = [dict(id=e.id, user=e.user.name if e.user else "Sistema",
                             role_label=ROLE_LABELS[e.user.role] if e.user else None, action=e.action,
                             action_label=EVENT_LABELS.get(e.action, e.action), from_status=e.from_status,
-                            to_status=e.to_status, note=e.note, created_at=e.created_at) for e in req.events]
-        d["signatures"] = [dict(id=s.id, user=s.user.name, role_label=ROLE_LABELS.get(s.role, s.role), signed_at=s.signed_at,
-                                ip=s.ip, hash=s.content_hash, algorithm=s.algorithm, valid=is_valid(req, s)) for s in req.signatures]
+                            to_status=e.to_status, note=e.note, ip=e.ip, created_at=e.created_at) for e in req.events]
+        d["approvals"] = [dict(a, role_label=ROLE_LABELS.get(a["role"], a["role"])) for a in approvals(req)]
     return d
 
 
@@ -137,7 +135,7 @@ def create_request(data: RequestIn, request: Request, u: User = Depends(get_curr
     req = AbsenceRequest(teacher_id=u.id, course_id=u.course_id, status=S.RASCUNHO, **data.model_dump())
     db.add(req)
     db.flush()
-    log_event(db, req, u, "create", None, S.RASCUNHO)
+    log_event(db, req, u, "create", None, S.RASCUNHO, ip=client_ip(request))
     db.commit()
     return serialize(req, u, detail=True)
 

@@ -6,9 +6,9 @@ from ..utils import now
 
 
 def log_event(db: Session, req: AbsenceRequest, user: User | None, action: str,
-              from_status: str | None, to_status: str, note: str | None = None, at=None):
+              from_status: str | None, to_status: str, note: str | None = None, at=None, ip: str | None = None):
     db.add(RequestEvent(request_id=req.id, user_id=user.id if user else None, action=action,
-                        from_status=from_status, to_status=to_status, note=note, created_at=at or now()))
+                        from_status=from_status, to_status=to_status, note=note, ip=ip, created_at=at or now()))
 
 
 def log_access(db: Session, user: User, action: str, resource: str, ip: str | None):

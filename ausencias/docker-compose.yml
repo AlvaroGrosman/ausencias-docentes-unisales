@@ -1,0 +1,21 @@
+# Sobe o PostgreSQL usado pelo protótipo:  docker compose up -d
+# Os dados ficam no volume "pgdata" e sobrevivem a reinícios do container.
+services:
+  postgres:
+    image: postgres:16
+    container_name: ausencias-postgres
+    environment:
+      POSTGRES_USER: ausencias
+      POSTGRES_PASSWORD: ausencias
+      POSTGRES_DB: ausencias
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ausencias -d ausencias"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

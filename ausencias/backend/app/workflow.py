@@ -7,7 +7,9 @@ CANCELADA: o docente pode cancelar antes do registro pela Sala.
 
 Toda regra vive aqui: quem pode executar cada ação e de qual estado. Os routers só
 chamam `apply_action`; o frontend apenas exibe `allowed_actions`.
-Cada transição grava evento de auditoria, notificação e (quando aplicável) assinatura.
+Cada transição grava evento de auditoria (usuário autenticado, data/hora, IP, status anterior e novo)
+e as notificações. Não há assinatura eletrônica: a manifestação de cada responsável é a própria
+APROVAÇÃO feita com o seu usuário, e a auditoria é a prova de quem aprovou e quando.
 """
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -17,14 +19,13 @@ from .constants import Role, Status as S, TERMINAL
 from .models import AbsenceRequest, User
 from .services.audit_service import log_event
 from .services.notification_service import notify, users_with_role
-from .services.signature_service import sign_request
 from .utils import now
 
 # label do botão, exige observação?, exige escolha de substituto?
 ACTIONS = {
-    "submit":  dict(label="Assinar e enviar", note=False),
+    "submit":  dict(label="Enviar à Coordenação", note=False),
     "cancel":  dict(label="Cancelar solicitação", note=False),
-    "approve": dict(label="Aprovar e assinar", note=False, substitute=True),
+    "approve": dict(label="Aprovar", note=False, substitute=True),
     "return":  dict(label="Devolver ao docente", note=True),
     "reject":  dict(label="Recusar", note=True),
     "accept_substitute":  dict(label="Aceitar substituição", note=False),
@@ -74,13 +75,11 @@ def allowed_actions(req: AbsenceRequest, user: User) -> list[dict]:
             for a, m in ACTIONS.items() if check(req, user, a) is None]
 
 
-def _move(db, req, user, action, to, note, at, ip, sign=False):
+def _move(db, req, user, action, to, note, at, ip):
     prev = req.status
     req.status, req.updated_at = to, at
     db.flush()
-    log_event(db, req, user, action, prev, to, note, at)
-    if sign and user:
-        sign_request(db, req, user, ip or "desconhecido", at)
+    log_event(db, req, user, action, prev, to, note, at, ip if user else None)
 
 
 def apply_action(db: Session, req: AbsenceRequest, user: User, action: str, note: str | None = None,
@@ -97,7 +96,7 @@ def apply_action(db: Session, req: AbsenceRequest, user: User, action: str, note
     if action == "submit":
         if not req.subjects.strip() or not req.reason.strip():
             raise HTTPException(422, "Preencha disciplinas/turmas e motivo antes de enviar.")
-        _move(db, req, user, "submit", S.ENVIADA, note, at, ip, sign=True)
+        _move(db, req, user, "submit", S.ENVIADA, note, at, ip)
         req.sent_at = req.sent_at or at
         _move(db, req, None, "auto_analysis", S.EM_ANALISE, "Encaminhada automaticamente à Coordenação", at, ip)
         notify(db, users_with_role(db, Role.COORDENADOR, req.course_id), req,
@@ -119,7 +118,7 @@ def apply_action(db: Session, req: AbsenceRequest, user: User, action: str, note
             sub = db.get(User, substitute_id)
             if not sub or not sub.active or sub.role not in Role.CAN_SUBSTITUTE or sub.id == teacher:
                 raise HTTPException(422, "Substituto inválido.")
-        _move(db, req, user, "approve", S.APROVADA, note, at, ip, sign=True)
+        _move(db, req, user, "approve", S.APROVADA, note, at, ip)
         if sub:
             req.substitute_id, req.substitute_status = sub.id, "PENDENTE"
             _move(db, req, None, "auto_substitute", S.AGUARDANDO_SUBSTITUTO,
@@ -132,9 +131,8 @@ def apply_action(db: Session, req: AbsenceRequest, user: User, action: str, note
 
     elif action == "accept_substitute":
         req.substitute_status = "ACEITA"
-        log_event(db, req, user, "accept_substitute", S.AGUARDANDO_SUBSTITUTO, S.AGUARDANDO_SUBSTITUTO, note, at)
+        log_event(db, req, user, "accept_substitute", S.AGUARDANDO_SUBSTITUTO, S.AGUARDANDO_SUBSTITUTO, note, at, ip)
         req.updated_at = at
-        sign_request(db, req, user, ip or "desconhecido", at)
         notify(db, users_with_role(db, Role.SALA), req, "substituição aceita — ausência pronta para registro", at)
         notify(db, [teacher], req, f"{user.name} aceitou a substituição", at)
 
@@ -147,13 +145,13 @@ def apply_action(db: Session, req: AbsenceRequest, user: User, action: str, note
         notify(db, [teacher], req, "substituto recusou; Coordenação indicará outro", at)
 
     elif action == "register":
-        _move(db, req, user, "register", S.REGISTRADA, note, at, ip, sign=True)
+        _move(db, req, user, "register", S.REGISTRADA, note, at, ip)
         notify(db, users_with_role(db, Role.RH), req, "ausência registrada — pendente de encerramento", at)
         notify(db, [teacher], req, "ausência registrada pela Sala dos Professores", at)
 
     elif action == "close":
         req.closed_at = at
-        _move(db, req, user, "close", S.ENCERRADA, note, at, ip, sign=True)
+        _move(db, req, user, "close", S.ENCERRADA, note, at, ip)
         notify(db, [teacher], req, "processo encerrado pelo RH", at)
 
     elif action == "cancel":
@@ -168,9 +166,25 @@ def apply_action(db: Session, req: AbsenceRequest, user: User, action: str, note
 
 
 EVENT_LABELS = {
-    "create": "Rascunho criado", "submit": "Assinada e enviada", "auto_analysis": "Encaminhada à Coordenação",
-    "return": "Devolvida ao docente", "reject": "Recusada", "approve": "Aprovada e assinada",
+    "create": "Rascunho criado", "submit": "Enviada pelo docente", "auto_analysis": "Encaminhada à Coordenação",
+    "return": "Devolvida ao docente", "reject": "Recusada", "approve": "Aprovada pela Coordenação",
     "auto_substitute": "Substituto indicado", "accept_substitute": "Substituição aceita",
     "decline_substitute": "Substituição recusada", "register": "Registrada pela Sala dos Professores",
     "close": "Encerrada pelo RH", "cancel": "Cancelada",
 }
+
+# Etapas em que um responsável formaliza sua decisão (substituem as antigas "assinaturas").
+APPROVAL_STEPS = {
+    "submit": "Envio da solicitação (docente)",
+    "approve": "Aprovação da Coordenação",
+    "accept_substitute": "Aceite da substituição",
+    "register": "Registro pela Sala dos Professores",
+    "close": "Encerramento pelo RH",
+}
+
+
+def approvals(req: AbsenceRequest) -> list[dict]:
+    """Aprovações registradas, extraídas da trilha de auditoria (cada uma feita pelo usuário autenticado)."""
+    return [dict(id=e.id, step=APPROVAL_STEPS[e.action], user=e.user.name, role=e.user.role,
+                 at=e.created_at, ip=e.ip)
+            for e in req.events if e.action in APPROVAL_STEPS and e.user]

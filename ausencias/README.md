@@ -1,13 +1,30 @@
 # Controle de Ausências Docentes — protótipo (TCC UniSales)
 
-Requisitos: Python 3.11+ e Node 18+.
+Requisitos: Python 3.11+, Node 18+ e PostgreSQL 14+.
+
+## Banco de dados (PostgreSQL)
+Escolha **uma** das opções:
+
+**A) Com Docker** (mais simples): na pasta `ausencias/`, rode
+```bash
+docker compose up -d
+```
+Isso sobe um PostgreSQL 16 com usuário `ausencias`, senha `ausencias` e banco `ausencias`.
+
+**B) PostgreSQL instalado no computador** (instalador oficial: https://www.postgresql.org/download/): no `psql` ou no pgAdmin, como usuário `postgres`, rode
+```sql
+CREATE USER ausencias WITH PASSWORD 'ausencias' CREATEDB;
+CREATE DATABASE ausencias OWNER ausencias;
+```
+
+Em seguida, copie `backend/.env.example` para `backend/.env`. Se usar outro usuário, senha ou porta, ajuste o `DATABASE_URL` nesse arquivo.
 
 ## Backend (terminal 1)
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m app.seed                                      # cria o banco com dados de demonstração (recria do zero)
+python -m app.seed                                      # cria as tabelas com dados de demonstração (recria do zero)
 uvicorn app.main:app --reload --port 8000
 ```
 API e documentação: http://localhost:8000/docs
@@ -24,6 +41,7 @@ Abra http://localhost:5173
 ```bash
 cd backend && python test_flow.py
 ```
+O teste usa um banco separado (`ausencias_test`), criado automaticamente e recriado do zero a cada execução; o banco principal não é alterado.
 
 ## Usuários de teste (senha de todos: `demo123`)
 | Perfil | E-mail |

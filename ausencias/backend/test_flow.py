@@ -1,14 +1,35 @@
 """
 Teste de ponta a ponta do fluxo:  python test_flow.py
-Usa um banco temporário (não toca no ausencias.db). Sai com código 1 se algo falhar.
+Usa um banco PostgreSQL separado (TEST_DATABASE_URL, padrão "ausencias_test"), que é
+criado se não existir e recriado do zero a cada execução — o banco principal não é tocado.
+Sai com código 1 se algo falhar.
 """
 import os
 import sys
-import tempfile
 from datetime import date, timedelta
+from pathlib import Path
 
-tmp = tempfile.mkdtemp()
-os.environ["DATABASE_URL"] = f"sqlite:///{tmp}/teste.db"
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
+TEST_URL = os.getenv("TEST_DATABASE_URL", "postgresql+psycopg://ausencias:ausencias@localhost:5432/ausencias_test")
+
+
+def ensure_database(url: str):
+    """Cria o banco de teste caso ainda não exista (conectando ao banco administrativo 'postgres')."""
+    u = make_url(url)
+    admin = create_engine(u.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        exists = conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": u.database}).scalar()
+        if not exists:
+            conn.execute(text(f'CREATE DATABASE "{u.database}"'))
+    admin.dispose()
+
+
+ensure_database(TEST_URL)
+os.environ["DATABASE_URL"] = TEST_URL
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -71,9 +92,10 @@ act(H["doc"], rid, "register", 403)
 step("rascunho invisível a terceiros; docente não aprova")
 
 d = act(H["doc"], rid, "submit")
-assert d["status"] == "EM_ANALISE_COORDENACAO" and len(d["signatures"]) == 1
-assert d["signatures"][0]["valid"] and len(d["signatures"][0]["hash"]) == 64
-step("docente assina e envia → EM_ANÁLISE (assinatura com SHA-256)")
+assert d["status"] == "EM_ANALISE_COORDENACAO" and len(d["approvals"]) == 1
+a = d["approvals"][0]
+assert a["user"] == d["teacher"]["name"] and a["role"] == "DOCENTE" and a["ip"] and a["at"]
+step("docente envia → EM_ANÁLISE (envio registrado com usuário, data/hora e IP)")
 act(H["doc"], rid, "submit", 409)                                                     # transição inválida
 act(H["sala"], rid, "register", 404)                                                  # sala ainda não vê
 assert c.get(f"/api/requests/{rid}", headers=H["coord2"]).status_code == 404         # coord de outro curso
@@ -91,15 +113,18 @@ upd = c.put(f"/api/requests/{rid}", headers=H["doc"], json=dict(type="PROGRAMADA
             subjects="Banco de Dados — 5SI e 6SI", reason="Congresso", notes="Levarei material", suggested_substitute_id=sub_id))
 assert upd.status_code == 200
 d = act(H["doc"], rid, "submit")
-assert d["status"] == "EM_ANALISE_COORDENACAO" and len(d["signatures"]) == 2
-assert [s["valid"] for s in d["signatures"]] == [False, True]    # 1ª assinatura ficou desatualizada após a edição
-step("devolvida com justificativa → editada → reenviada (assinatura antiga marcada como desatualizada)")
+assert d["status"] == "EM_ANALISE_COORDENACAO" and len(d["approvals"]) == 2              # 1º envio + reenvio
+step("devolvida com justificativa → editada → reenviada (ambos os envios na auditoria)")
 
 # --- aprovação com substituto
 d = act(H["coord"], rid, "approve", note="Ok", substitute_id=sub_id)
 assert d["status"] == "AGUARDANDO_SUBSTITUTO" and d["substitute"]["id"] == sub_id
+assert d["approvals"][-1]["step"] == "Aprovação da Coordenação" and d["approvals"][-1]["role"] == "COORDENADOR"
 act(H["sala"], rid, "register", 409)                                                  # ainda sem aceite
-step("coordenador aprova e indica substituto → AGUARDANDO_SUBSTITUTO")
+blocked = c.put(f"/api/requests/{rid}", headers=H["doc"], json=dict(type="PROGRAMADA", start_date=str(start), end_date=str(start + timedelta(days=1)),
+                subjects="Banco de Dados — 5SI", reason="Congresso", notes="alteração indevida", suggested_substitute_id=sub_id))
+assert blocked.status_code == 409, blocked.text                                                     # conteúdo aprovado não pode mais ser alterado
+step("coordenador aprova (aprovação registrada) e indica substituto; conteúdo aprovado fica bloqueado para edição")
 
 # --- substituto
 ds = c.get(f"/api/requests/{rid}", headers=H["sub"]).json()
@@ -127,12 +152,17 @@ assert d["allowed_actions"] == []
 act(H["rh"], rid, "close", 409)
 step("RH encerra → ENCERRADA_RH (estado final sem ações)")
 
-# --- histórico e assinaturas
+# --- histórico e aprovações
 actions = [e["action"] for e in d["events"]]
 for a in ("create", "submit", "return", "approve", "accept_substitute", "register", "close"):
     assert a in actions, a
-assert len(d["signatures"]) >= 6 and all(s["ip"] for s in d["signatures"])
-step(f"auditoria completa: {len(d['events'])} eventos, {len(d['signatures'])} assinaturas")
+steps = [a["step"] for a in d["approvals"]]
+for sname in ("Envio da solicitação (docente)", "Aprovação da Coordenação", "Aceite da substituição",
+              "Registro pela Sala dos Professores", "Encerramento pelo RH"):
+    assert sname in steps, sname
+assert all(a["ip"] and a["user"] for a in d["approvals"])
+assert all(e["user"] == "Sistema" or e["ip"] for e in d["events"])
+step(f"auditoria completa: {len(d['events'])} eventos, {len(d['approvals'])} aprovações (todas com usuário, data/hora e IP)")
 
 # --- PDFs
 for who in ("doc", "coord", "sala", "rh"):

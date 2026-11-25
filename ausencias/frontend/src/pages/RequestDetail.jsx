@@ -92,14 +92,13 @@ export default function RequestDetail() {
       {req.allowed_actions.length === 0 && <><Alert>{error}</Alert><Alert kind="ok">{ok}</Alert></>}
 
       <div className="card">
-        <h3>Assinaturas eletrônicas <small className="muted">(simuladas)</small></h3>
-        {req.signatures.length === 0 ? <p className="muted">Ainda não assinada.</p> : (
+        <h3>Aprovações registradas</h3>
+        <p className="muted small">Cada etapa é aprovada pelo próprio responsável, autenticado com seu usuário e senha. O registro abaixo vem da trilha de auditoria.</p>
+        {req.approvals.length === 0 ? <p className="muted">Nenhuma aprovação registrada até o momento.</p> : (
           <div className="scroll"><table>
-            <thead><tr><th>Assinante</th><th>Papel</th><th>Data/hora</th><th>IP</th><th>Hash SHA-256 do conteúdo</th><th>Situação</th></tr></thead>
-            <tbody>{req.signatures.map((s) => (
-              <tr key={s.id}><td>{s.user}</td><td>{s.role_label}</td><td>{fmtDT(s.signed_at)}</td><td>{s.ip}</td>
-                <td><code className="hash">{s.hash}</code></td>
-                <td>{s.valid ? <span className="ok-txt">Íntegra</span> : <span className="bad-txt">Conteúdo alterado depois</span>}</td></tr>
+            <thead><tr><th>Etapa</th><th>Responsável</th><th>Perfil</th><th>Data/hora</th><th>IP</th></tr></thead>
+            <tbody>{req.approvals.map((a) => (
+              <tr key={a.id}><td>{a.step}</td><td>{a.user}</td><td>{a.role_label}</td><td>{fmtDT(a.at)}</td><td>{a.ip || '-'}</td></tr>
             ))}</tbody>
           </table></div>
         )}

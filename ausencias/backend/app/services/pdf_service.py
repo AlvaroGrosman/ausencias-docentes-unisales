@@ -11,15 +11,13 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from ..constants import ROLE_LABELS, STATUS_LABELS, TYPE_LABELS
 from ..models import AbsenceRequest
 from ..utils import fmt_date, fmt_dt, now
-from ..workflow import EVENT_LABELS
-from .signature_service import is_valid
+from ..workflow import EVENT_LABELS, approvals
 
 NAVY = colors.HexColor("#14285a")
 GREY = colors.HexColor("#f1f4f9")
 _ss = getSampleStyleSheet()
 BODY = ParagraphStyle("body", parent=_ss["BodyText"], fontSize=9, leading=12)
 SMALL = ParagraphStyle("small", parent=BODY, fontSize=7, leading=9)
-MONO = ParagraphStyle("mono", parent=SMALL, fontName="Courier", fontSize=6.5, leading=8)
 H1 = ParagraphStyle("h1", parent=_ss["Title"], fontSize=14, textColor=NAVY, spaceAfter=2)
 H2 = ParagraphStyle("h2", parent=_ss["Heading2"], fontSize=10.5, textColor=NAVY, spaceBefore=10, spaceAfter=4)
 
@@ -79,16 +77,18 @@ def build_request_pdf(req: AbsenceRequest, show_reason: bool) -> bytes:
     if show_reason and req.attachment_name:
         el += [Spacer(1, 4), P(f"Anexo: {req.attachment_name}")]
 
-    el.append(Paragraph("Assinaturas eletrônicas (simuladas)", H2))
-    if req.signatures:
-        rows = [[_hdr("Assinante"), _hdr("Papel"), _hdr("Data/hora"), _hdr("IP"), _hdr("Hash SHA-256 do conteúdo")]]
-        for s in req.signatures:
-            ok = is_valid(req, s)
-            rows.append([P(s.user.name, SMALL), P(ROLE_LABELS.get(s.role, s.role), SMALL), P(fmt_dt(s.signed_at), SMALL), P(s.ip, SMALL),
-                         Paragraph(escape(s.content_hash) + ("" if ok else "<br/><font color='#b00020'>conteúdo alterado após esta assinatura</font>"), MONO)])
-        el.append(_table(rows, [3.2 * cm, 2.6 * cm, 2.6 * cm, 2.2 * cm, W - 10.6 * cm]))
+    el.append(Paragraph("Aprovações registradas", H2))
+    aps = approvals(req)
+    if aps:
+        rows = [[_hdr("Etapa"), _hdr("Responsável (usuário autenticado)"), _hdr("Perfil"), _hdr("Data/hora"), _hdr("IP")]]
+        for a in aps:
+            rows.append([P(a["step"], SMALL), P(a["user"], SMALL), P(ROLE_LABELS.get(a["role"], a["role"]), SMALL),
+                         P(fmt_dt(a["at"]), SMALL), P(a["ip"] or "-", SMALL)])
+        el.append(_table(rows, [4.6 * cm, 4.4 * cm, 3 * cm, 2.6 * cm, W - 14.6 * cm]))
+        el.append(P("Cada aprovação foi realizada pelo próprio responsável, autenticado com usuário e senha individuais, "
+                    "e consta da trilha de auditoria abaixo.", SMALL))
     else:
-        el.append(P("Ainda não assinada."))
+        el.append(P("Nenhuma aprovação registrada até o momento."))
 
     el.append(Paragraph("Histórico de tramitação (auditoria)", H2))
     rows = [[_hdr("Data/hora"), _hdr("Responsável"), _hdr("Ação"), _hdr("Status"), _hdr("Observação")]]

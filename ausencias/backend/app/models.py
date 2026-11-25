@@ -58,7 +58,6 @@ class AbsenceRequest(Base):
     suggested_substitute: Mapped[User | None] = relationship(foreign_keys=[suggested_substitute_id])
     substitute: Mapped[User | None] = relationship(foreign_keys=[substitute_id])
     events: Mapped[list["RequestEvent"]] = relationship(order_by="RequestEvent.id", back_populates="request")
-    signatures: Mapped[list["Signature"]] = relationship(order_by="Signature.id", back_populates="request")
 
     @property
     def protocol(self):
@@ -79,6 +78,7 @@ class RequestEvent(Base):
     from_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
     to_status: Mapped[str] = mapped_column(String(40))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(60), nullable=True)   # origem da ação (auditoria)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     request: Mapped[AbsenceRequest] = relationship(back_populates="events")
     user: Mapped[User | None] = relationship()
@@ -94,19 +94,6 @@ class Notification(Base):
     read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
-
-class Signature(Base):
-    __tablename__ = "signatures"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    request_id: Mapped[int] = mapped_column(ForeignKey("absence_requests.id"), index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    role: Mapped[str] = mapped_column(String(30))
-    signed_at: Mapped[datetime] = mapped_column(DateTime, default=now)
-    ip: Mapped[str] = mapped_column(String(60))
-    content_hash: Mapped[str] = mapped_column(String(64))
-    algorithm: Mapped[str] = mapped_column(String(40))
-    request: Mapped[AbsenceRequest] = relationship(back_populates="signatures")
-    user: Mapped[User] = relationship()
 
 
 class AccessLog(Base):

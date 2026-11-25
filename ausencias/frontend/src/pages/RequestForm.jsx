@@ -79,7 +79,7 @@ export default function RequestForm() {
           <button type="button" className="btn" onClick={() => nav(-1)}>Cancelar</button>
           <button className="btn primary" disabled={busy}>{busy ? 'Salvando…' : 'Salvar rascunho'}</button>
         </div>
-        <p className="muted small">Depois de salvar, abra a solicitação e clique em “Assinar e enviar” para encaminhá-la à Coordenação.</p>
+        <p className="muted small">Depois de salvar, abra a solicitação e clique em “Enviar à Coordenação”.</p>
       </form>
     </>
   )
